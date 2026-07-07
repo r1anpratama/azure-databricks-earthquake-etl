@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 12 * * 1"  # Weekly Monday noon: data freshness check
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lint deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+      - name: Ruff check
+        run: ruff check src/ tests/ --output-format=github
+      - name: mypy (strict)
+        run: mypy src/ --strict --ignore-missing-imports
+      - name: Check YAML syntax
+        run: python -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test deps
+        run: |
+          pip install pyspark delta-spark pyyaml pytest
+      - name: Run tests
+        run: pytest tests/ -v --tb=short --color=yes
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: .pytest_cache/
+
+  # Simulates the full ETL pipeline locally (lightweight version)
+  integration:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install pyspark delta-spark pyyaml
+      - name: Run Bronze → Silver → Gold
+        run: |
+          python -c "
+          import yaml, tempfile, os
+          from pyspark.sql import SparkSession
+          
+          spark = SparkSession.builder \
+            .master('local[2]') \
+            .appName('integration-test') \
+            .config('spark.sql.extensions', 'io.delta.sql.DeltaSparkSessionExtension') \
+            .config('spark.sql.catalog.spark_catalog', 'org.apache.spark.sql.delta.catalog.DeltaCatalog') \
+            .getOrCreate()
+          
+          # Test config loading
+          cfg = yaml.safe_load(open('config/config.yaml'))
+          assert 'bronze' in cfg, 'Config missing bronze section'
+          
+          # Test full pipeline with sample data
+          from src.bronze import BronzeIngestion
+          from src.silver import SilverTransformer
+          from src.gold import GoldAggregator
+          
+          base = tempfile.mkdtemp()
+          
+          # Build sample df
+          df = spark.createDataFrame([
+              (10, '2024-06-01T00:00:00', -8.5, 115.2, 4.5, 20.0, '25km S Denpasar', 'earthquake', 'reviewed', 120.0, 1.5, 0.8, 45),
+              (11, '2024-06-15T00:00:00', -7.3, 109.8, 3.2, 10.0, '15km SW Purwokerto', 'earthquake', 'automatic', 150.0, 2.1, 0.5, 20),
+          ], ['id','time','latitude','longitude','mag','depth','place','type','status','gap','dmin','rms','nst'])
+          
+          # Silver
+          st = SilverTransformer(base + '/bronze', base + '/silver')
+          clean = st.transform(df)
+          assert clean.count() > 0
+          st.load(clean)
+          assert spark.read.format('delta').load(base + '/silver').count() == 2
+          
+          # Gold
+          ga = GoldAggregator(base + '/silver', base + '/gold')
+          daily, monthly, mag_dist = ga.build_aggregations(clean)
+          assert daily.count() > 0
+          assert monthly.count() > 0
+          print('Integration test PASSED ✅')
+          "

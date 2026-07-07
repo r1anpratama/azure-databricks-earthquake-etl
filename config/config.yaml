@@ -1,0 +1,67 @@
+# Medallion Architecture Configuration
+# Bronze → Silver → Gold layers
+
+catalog: earthquake_analytics
+database: default
+
+paths:
+  bronze: /mnt/earthquake_analytics/bronze/events
+  silver: /mnt/earthquake_analytics/silver/events
+  gold: /mnt/earthquake_analytics/gold/monthly_stats
+
+ingestion:
+  source_url: "https://earthquake.usgs.gov/fdsnws/event/1/query"
+  params:
+    format: csv
+    minmagnitude: 2.5
+    orderby: time
+  batch_size: 20000
+  timeout_seconds: 60
+
+quality:
+  checks:
+    - name: no_null_time
+      column: time
+      rule: not_null
+      severity: FAIL
+    - name: no_null_magnitude
+      column: mag
+      rule: not_null
+      severity: FAIL
+    - name: valid_latitude
+      column: latitude
+      rule: "between -90 and 90"
+      severity: WARN
+    - name: valid_longitude
+      column: longitude
+      rule: "between -180 and 180"
+      severity: WARN
+    - name: positive_depth
+      column: depth
+      rule: ">= 0"
+      severity: WARN
+    - name: valid_magnitude_range
+      column: mag
+      rule: "between 0 and 10"
+      severity: FAIL
+    - name: valid_timestamp
+      column: time
+      rule: "past_10_years"
+      severity: FAIL
+  fail_on: FAIL
+  mode: permissive  # WARN logs error, FAIL rows are dropped
+
+silver:
+  dedup_keys: [time, latitude, longitude, mag]
+  dedup_order: time
+  date_partitions: [year, month]
+  output_format: delta
+
+gold:
+  metrics:
+    - event_count
+    - avg_magnitude
+    - max_magnitude
+    - avg_depth
+    - region_count
+  output_format: delta

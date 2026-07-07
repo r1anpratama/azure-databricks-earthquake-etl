@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.env
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Databricks
+.DS_Store
+.metastore/
+.cache/
+*.dbc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.DS_Store?
+
+# Docker
+.docker/
+
+# Temp
+/tmp/
+*.log
