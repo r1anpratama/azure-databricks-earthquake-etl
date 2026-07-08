@@ -52,6 +52,12 @@ except:
 df_pd = pd.read_csv(SOURCE_URL)
 print(f"Downloaded {len(df_pd):,} records from USGS")
 
+# Parse timestamp columns in pandas first (avoid Arrow conversion error)
+if "time" in df_pd.columns:
+    df_pd["time"] = pd.to_datetime(df_pd["time"], utc=True)
+if "updated" in df_pd.columns:
+    df_pd["updated"] = pd.to_datetime(df_pd["updated"], utc=True)
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Schema enforcement
