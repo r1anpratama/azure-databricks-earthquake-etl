@@ -2,20 +2,21 @@
 Shared utilities: config loader, schema definitions, metrics helpers.
 """
 
-import yaml
-from pathlib import Path
-from pyspark.sql import SparkSession
 import logging
+from typing import Any
+
+import yaml
+from pyspark.sql import SparkSession
 
 logger = logging.getLogger(__name__)
 
 
-def load_config(path: str = "config/config.yaml") -> dict:
+def load_config(path: str = "config/config.yaml") -> dict[str, Any]:
     """Load YAML configuration."""
     with open(path) as f:
         cfg = yaml.safe_load(f)
     logger.info("Config loaded from %s", path)
-    return cfg
+    return cfg  # type: ignore[no-any-return]
 
 
 def create_catalog(spark: SparkSession, catalog_name: str) -> None:

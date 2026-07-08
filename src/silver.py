@@ -3,13 +3,19 @@ Silver Layer — Cleaning, deduplication, enrichment, validation.
 Reads Bronze Delta → produces clean Silver Delta.
 """
 
+import logging
+
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
-    col, to_timestamp, year, month, when, regexp_extract,
-    row_number, count, round as spark_round, lit, coalesce
+    col,
+    month,
+    regexp_extract,
+    row_number,
+    to_timestamp,
+    when,
+    year,
 )
 from pyspark.sql.window import Window
-import logging
 
 logger = logging.getLogger(__name__)
 

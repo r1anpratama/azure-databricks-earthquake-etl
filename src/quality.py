@@ -3,10 +3,13 @@ Data Quality Framework — Rule-based validation at each medallion layer.
 Checks: not_null, range, uniqueness, freshness, schema conformity.
 """
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, count, when, isnan, isnull, lit, min as spark_min, max as spark_max
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any
+
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, isnan
+from pyspark.sql.functions import max as spark_max
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +26,7 @@ class QualityCheck:
         self.status = status
         self.detail = detail
 
-    def to_row(self) -> dict:
+    def to_row(self) -> dict[str, Any]:
         return {
             "check_name": self.name,
             "table": self.table,
@@ -87,7 +90,7 @@ class DataQuality:
         )
 
     def check_schema(self, df: DataFrame, table: str,
-                     expected_columns: list) -> QualityCheck:
+                     expected_columns: list[str]) -> QualityCheck:
         actual = set(df.columns)
         expected = set(expected_columns)
         missing = expected - actual

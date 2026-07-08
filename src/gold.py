@@ -3,12 +3,14 @@ Gold Layer — Business-level aggregations.
 Reads Silver Delta → produces analytics-ready Delta tables.
 """
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import (
-    count, avg, max as spark_max, min as spark_min,
-    round as spark_round, col, sum, when, date_format
-)
+
 import logging
+
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import approx_count_distinct, avg, col, count, date_format, when
+from pyspark.sql.functions import max as spark_max
+from pyspark.sql.functions import min as spark_min
+from pyspark.sql.functions import round as spark_round
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ class GoldAggregator:
             spark_round(avg("depth_km"), 1).alias("avg_depth_km"),
             spark_round(avg("rms"), 3).alias("avg_rms"),
             count(when(col("mag") >= 5.0, 1)).alias("major_events"),
-            countDistinctApprox("region").alias("regions_active")
+            approx_count_distinct("region").alias("regions_active")
         ).orderBy("year", "month")
 
     def _mag_distribution(self, df: DataFrame) -> DataFrame:
@@ -60,7 +62,7 @@ class GoldAggregator:
         ).orderBy(col("count").desc())
 
     def load_all(self, daily: DataFrame, monthly: DataFrame,
-                 mag_dist: DataFrame) -> dict:
+                     mag_dist: DataFrame) -> dict[str, str]:
         """Write each aggregation to its own Delta path."""
         paths = {}
 

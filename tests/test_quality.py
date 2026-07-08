@@ -2,7 +2,8 @@
 Tests for Data Quality framework.
 """
 import pytest
-from pyspark.sql import SparkSession, Row
+from pyspark.sql import Row, SparkSession
+
 from src.quality import DataQuality, QualityCheck
 
 

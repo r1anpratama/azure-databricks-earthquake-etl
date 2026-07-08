@@ -3,11 +3,11 @@ Bronze Layer — Raw ingestion from USGS earthquake API.
 Minimal transformation, schema-on-read, stored as Delta.
 """
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, to_timestamp, year, month, current_timestamp
-import requests
-from io import StringIO
 import logging
+from typing import Any
+
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, current_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class BronzeIngestion:
         logger.info("Bronze load complete: %s rows at %s", rows, self.output_path)
         return self.output_path
 
-    def summarize(self, df: DataFrame) -> dict:
+    def summarize(self, df: DataFrame) -> dict[str, Any]:
         """Print quick stats."""
         stats = {
             "total_raw": df.count(),

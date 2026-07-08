@@ -2,7 +2,8 @@
 Tests for Silver transformer layer.
 """
 import pytest
-from pyspark.sql import SparkSession, Row
+from pyspark.sql import Row, SparkSession
+
 from src.silver import SilverTransformer
 
 

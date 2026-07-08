@@ -3,7 +3,8 @@ Tests for Bronze layer.
 Run with: pytest tests/ -v
 """
 import pytest
-from pyspark.sql import SparkSession, Row
+from pyspark.sql import Row, SparkSession
+
 from src.bronze import BronzeIngestion
 
 
