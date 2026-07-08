@@ -9,6 +9,8 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat&logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> **✅ Databricks Community Edition (Free) Compatible** — Runs on Serverless Starter Warehouse with UC Volumes (no DBFS, no compute clusters needed)
+
 ---
 
 ## Architecture

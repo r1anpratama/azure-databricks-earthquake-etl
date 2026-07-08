@@ -1,13 +1,14 @@
 # Medallion Architecture Configuration
 # Bronze → Silver → Gold layers
 
-catalog: earthquake_analytics
+catalog: main
 database: default
+volume: earthquake_analytics
 
 paths:
-  bronze: /mnt/earthquake_analytics/bronze/events
-  silver: /mnt/earthquake_analytics/silver/events
-  gold: /mnt/earthquake_analytics/gold/monthly_stats
+  bronze: /Volumes/main/default/earthquake_analytics/bronze/events
+  silver: /Volumes/main/default/earthquake_analytics/silver/events
+  gold: /Volumes/main/default/earthquake_analytics/gold
 
 ingestion:
   source_url: "https://earthquake.usgs.gov/fdsnws/event/1/query"
