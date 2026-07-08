@@ -1,50 +1,34 @@
 # Databricks notebook source
 # DBTITLE 1, Silver Layer — Cleaning & Validation (Community Edition)
-# Self-contained: reads Bronze Delta table from Volume, writes cleaned Silver layer
+# Self-contained: reads Bronze temp view, creates Silver temp view
 # Run AFTER bronze_ingestion.py
 # Run on: Serverless Starter Warehouse
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Silver Layer
-# MAGIC Read Bronze → Deduplicate → Enrich → Write Silver Delta
+# MAGIC Read Bronze temp view → Deduplicate → Enrich → Silver temp view
 # MAGIC - Deduplicate by event ID
 # MAGIC - Enrich with derived columns (year, month, mag_category)
-# MAGIC - Partition by year + month
+# MAGIC - No persistent storage needed
 
 # COMMAND ----------
 from pyspark.sql.functions import (
-    year, month, col, when, trim, to_timestamp,
-    date_format, count as _count, desc, row_number
+    year, month, col, when, trim, desc, row_number
 )
 from pyspark.sql.window import Window
 
 # COMMAND ----------
-# Config (Community Edition) - try UC Volume, fallback to Workspace
-try:
-    spark.sql("DESCRIBE VOLUME hive_metastore.default.earthquake_analytics")
-    VOLUME_PATH = "/Volumes/hive_metastore/default/earthquake_analytics"
-except:
-    try:
-        spark.sql("DESCRIBE VOLUME main.default.earthquake_analytics")
-        VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
-    except:
-        VOLUME_PATH = "/Workspace/Pipelines/earthquake_analytics"
+# MAGIC %md
+# MAGIC ## Read Bronze (from temp view)
 
-bronze_path = f"{VOLUME_PATH}/bronze/events"
-silver_path = f"{VOLUME_PATH}/silver/events"
+# COMMAND ----------
+df_bronze = spark.sql("SELECT * FROM bronze_events")
+print(f"Read {df_bronze.count():,} rows from Bronze temp view")
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Read Bronze
-
-# COMMAND ----------
-df_bronze = spark.read.format("delta").load(bronze_path)
-print(f"Read {df_bronze.count():,} rows from Bronze")
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## Transform: Clean → Enrich → Partition
+# MAGIC ## Transform: Clean → Enrich
 
 # COMMAND ----------
 # Deduplicate by event ID (keep latest)
@@ -56,7 +40,7 @@ df_dedup = df_bronze.withColumn("rn", row_number().over(window)) \
 # Drop rows with null critical fields
 df_clean = df_dedup.na.drop(subset=["time", "latitude", "longitude", "mag"])
 
-# Enrich: add year, month for partitioning
+# Enrich: add year, month, mag_category
 df_silver = df_clean \
     .withColumn("event_year", year(col("time"))) \
     .withColumn("event_month", month(col("time"))) \
@@ -85,16 +69,11 @@ for name, passed in quality_results:
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Load: Write to Delta (partitioned by year+month)
+# MAGIC ## Create Temp View (in-memory)
 
 # COMMAND ----------
-df_silver.write \
-    .format("delta") \
-    .mode("overwrite") \
-    .partitionBy("event_year", "event_month") \
-    .save(silver_path)
-
-print(f"✅ Silver layer written to: {silver_path}")
+df_silver.createOrReplaceTempView("silver_events")
+print("✅ Silver temp view created: silver_events")
 
 # COMMAND ----------
 # MAGIC %md
@@ -107,6 +86,6 @@ print(f"{'='*50}")
 print(f"Bronze input:      {df_bronze.count():,}")
 print(f"Silver output:      {df_silver.count():,}")
 print(f"Rows dropped:       {df_bronze.count() - df_silver.count():,}")
-print(f"Storage:            Delta at {silver_path}")
+print(f"Storage:            In-memory temp view (silver_events)")
 
 display(df_silver.limit(100))

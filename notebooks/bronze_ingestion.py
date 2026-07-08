@@ -1,15 +1,16 @@
 # Databricks notebook source
 # DBTITLE 1, Bronze Layer — Raw Ingestion (Community Edition)
-# Self-contained: no src.* imports, no DBFS, uses UC Volume for storage
+# Self-contained: no src.* imports, no DBFS, no Volume write needed
 # Run on: Serverless Starter Warehouse
+# Output: in-memory temp view "bronze_events" + display
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Bronze Layer
-# MAGIC Ingest USGS earthquake CSV → raw Delta table in UC Volume
+# MAGIC Ingest USGS earthquake CSV → Spark DataFrame → temp view
 # MAGIC - Schema enforcement on load
 # MAGIC - Data quality checks
-# MAGIC - No DBFS dependency (Community Edition compatible)
+# MAGIC - No persistent storage needed (Community Edition compatible)
 
 # COMMAND ----------
 import pandas as pd
@@ -19,30 +20,8 @@ from pyspark.sql.types import (
 )
 
 # COMMAND ----------
-# Config (Community Edition — no config.yaml access)
+# Config (Community Edition)
 SOURCE_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=2.5&orderby=time"
-VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
-
-# Create volume directory via SQL (UC) - try multiple catalog options
-try:
-    spark.sql("CREATE VOLUME IF NOT EXISTS hive_metastore.default.earthquake_analytics")
-    VOLUME_PATH = "/Volumes/hive_metastore/default/earthquake_analytics"
-except:
-    try:
-        spark.sql("CREATE VOLUME IF NOT EXISTS main.default.earthquake_analytics")
-        VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
-    except:
-        # Fallback: use workspace files (always available)
-        VOLUME_PATH = "/Workspace/Pipelines/earthquake_analytics"
-        import os
-        for p in [
-            f"{VOLUME_PATH}/bronze/events",
-            f"{VOLUME_PATH}/silver/events",
-            f"{VOLUME_PATH}/gold/daily_stats",
-            f"{VOLUME_PATH}/gold/monthly_stats", 
-            f"{VOLUME_PATH}/gold/magnitude_distribution"
-        ]:
-            os.makedirs(p, exist_ok=True)
 
 # COMMAND ----------
 # MAGIC %md
@@ -98,7 +77,7 @@ print(f"Bronze DataFrame: {df.count():,} rows, {len(df.columns)} columns")
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Data Quality Checks (inline, no src.quality import)
+# MAGIC ## Data Quality Checks (inline)
 
 # COMMAND ----------
 quality_results = []
@@ -132,17 +111,11 @@ for name, passed, failures in quality_results:
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Load: Write to Delta table in UC Volume
+# MAGIC ## Create Temp View (in-memory, no file write)
 
 # COMMAND ----------
-bronze_path = f"{VOLUME_PATH}/bronze/events"
-
-df.write \
-  .format("delta") \
-  .mode("overwrite") \
-  .save(bronze_path)
-
-print(f"✅ Bronze layer written to: {bronze_path}")
+df.createOrReplaceTempView("bronze_events")
+print("✅ Bronze temp view created: bronze_events")
 
 # COMMAND ----------
 # MAGIC %md
@@ -154,7 +127,7 @@ print(f"BRONZE LAYER SUMMARY")
 print(f"{'='*50}")
 print(f"Records loaded:    {df.count():,}")
 print(f"Columns:           {len(df.columns)}")
-print(f"Storage:           Delta at {bronze_path}")
+print(f"Storage:           In-memory temp view (bronze_events)")
 print(f"Quality checks:    {sum(1 for _,p,_ in quality_results if p)}/{len(quality_results)} passed")
 
 display(df.limit(100))

@@ -1,13 +1,13 @@
 # Databricks notebook source
 # DBTITLE 1, Gold Layer — Business Analytics (Community Edition)
-# Self-contained: reads Silver Delta from Volume, writes Gold aggregations
+# Self-contained: reads Silver temp view, produces Gold aggregations
 # Run AFTER silver_cleaning.py
 # Run on: Serverless Starter Warehouse
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Gold Layer
-# MAGIC Aggregate Silver → analytics-ready Delta tables:
+# MAGIC Aggregate Silver → analytics-ready results (display only, no file write)
 # MAGIC 1. Daily stats (count, avg/max magnitude, avg depth)
 # MAGIC 2. Monthly stats (count, avg/max magnitude)
 # MAGIC 3. Magnitude distribution (by category)
@@ -19,27 +19,12 @@ from pyspark.sql.functions import (
 )
 
 # COMMAND ----------
-# Config (Community Edition) - try UC Volume, fallback to Workspace
-try:
-    spark.sql("DESCRIBE VOLUME hive_metastore.default.earthquake_analytics")
-    VOLUME_PATH = "/Volumes/hive_metastore/default/earthquake_analytics"
-except:
-    try:
-        spark.sql("DESCRIBE VOLUME main.default.earthquake_analytics")
-        VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
-    except:
-        VOLUME_PATH = "/Workspace/Pipelines/earthquake_analytics"
-
-silver_path = f"{VOLUME_PATH}/silver/events"
-gold_path = f"{VOLUME_PATH}/gold"
-
-# COMMAND ----------
 # MAGIC %md
-# MAGIC ## Read Silver
+# MAGIC ## Read Silver (from temp view)
 
 # COMMAND ----------
-df_silver = spark.read.format("delta").load(silver_path)
-print(f"Read {df_silver.count():,} rows from Silver")
+df_silver = spark.sql("SELECT * FROM silver_events")
+print(f"Read {df_silver.count():,} rows from Silver temp view")
 
 # COMMAND ----------
 # MAGIC %md
@@ -56,9 +41,7 @@ daily = df_silver.groupBy(date_format(col("time"), "yyyy-MM-dd").alias("date")) 
     ) \
     .orderBy(desc("date"))
 
-daily.write.format("delta").mode("overwrite").save(f"{gold_path}/daily_stats")
 print(f"✅ Daily stats: {daily.count():,} rows")
-
 display(daily.limit(20))
 
 # COMMAND ----------
@@ -79,9 +62,7 @@ monthly = df_silver.groupBy(
     ) \
     .orderBy(col("year").desc(), col("month").desc())
 
-monthly.write.format("delta").mode("overwrite").save(f"{gold_path}/monthly_stats")
 print(f"✅ Monthly stats: {monthly.count():,} rows")
-
 display(monthly)
 
 # COMMAND ----------
@@ -98,9 +79,7 @@ mag_dist = df_silver.groupBy(col("mag_category")) \
     ) \
     .orderBy(desc("max_mag"))
 
-mag_dist.write.format("delta").mode("overwrite").save(f"{gold_path}/magnitude_distribution")
 print(f"✅ Magnitude distribution: {mag_dist.count():,} categories")
-
 display(mag_dist)
 
 # COMMAND ----------
@@ -115,9 +94,15 @@ print(f"Silver source rows:   {df_silver.count():,}")
 print(f"Daily stats rows:     {daily.count():,}")
 print(f"Monthly stats rows:   {monthly.count():,}")
 print(f"Mag categories:       {mag_dist.count():,}")
-print(f"Storage:              Delta at {gold_path}")
+print(f"Storage:              In-memory results (display only)")
 
 print(f"\n--- Top 5 Most Active Days ---")
 display(daily.orderBy(desc("event_count")).limit(5))
 print(f"\n--- Top 5 Strongest Events ---")
 display(df_silver.select("time", "place", "mag", "depth").orderBy(desc("mag")).limit(5))
+
+# Create temp views for downstream use
+daily.createOrReplaceTempView("gold_daily_stats")
+monthly.createOrReplaceTempView("gold_monthly_stats")
+mag_dist.createOrReplaceTempView("gold_mag_distribution")
+print("\n✅ Gold temp views created: gold_daily_stats, gold_monthly_stats, gold_mag_distribution")
