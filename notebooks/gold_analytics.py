@@ -20,11 +20,11 @@ from pyspark.sql.functions import (
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Read Silver (from temp view)
+# MAGIC ## Read Silver (from global temp view)
 
 # COMMAND ----------
-df_silver = spark.sql("SELECT * FROM silver_events")
-print(f"Read {df_silver.count():,} rows from Silver temp view")
+df_silver = spark.sql("SELECT * FROM global_temp.silver_events")
+print(f"Read {df_silver.count():,} rows from Silver global temp view")
 
 # COMMAND ----------
 # MAGIC %md
@@ -101,8 +101,8 @@ display(daily.orderBy(desc("event_count")).limit(5))
 print(f"\n--- Top 5 Strongest Events ---")
 display(df_silver.select("time", "place", "mag", "depth").orderBy(desc("mag")).limit(5))
 
-# Create temp views for downstream use
-daily.createOrReplaceTempView("gold_daily_stats")
-monthly.createOrReplaceTempView("gold_monthly_stats")
-mag_dist.createOrReplaceTempView("gold_mag_distribution")
-print("\n✅ Gold temp views created: gold_daily_stats, gold_monthly_stats, gold_mag_distribution")
+# Create global temp views for downstream use
+daily.createOrReplaceGlobalTempView("gold_daily_stats")
+monthly.createOrReplaceGlobalTempView("gold_monthly_stats")
+mag_dist.createOrReplaceGlobalTempView("gold_mag_distribution")
+print("\n✅ Gold global temp views created: global_temp.gold_daily_stats, gold_monthly_stats, gold_mag_distribution")

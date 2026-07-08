@@ -20,11 +20,11 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Read Bronze (from temp view)
+# MAGIC ## Read Bronze (from global temp view)
 
 # COMMAND ----------
-df_bronze = spark.sql("SELECT * FROM bronze_events")
-print(f"Read {df_bronze.count():,} rows from Bronze temp view")
+df_bronze = spark.sql("SELECT * FROM global_temp.bronze_events")
+print(f"Read {df_bronze.count():,} rows from Bronze global temp view")
 
 # COMMAND ----------
 # MAGIC %md
@@ -71,9 +71,9 @@ for name, passed in quality_results:
 # MAGIC %md
 # MAGIC ## Create Temp View (in-memory)
 
-# COMMAND ----------
-df_silver.createOrReplaceTempView("silver_events")
-print("✅ Silver temp view created: silver_events")
+# Create Global Temp View (shared across notebooks)
+df_silver.createOrReplaceGlobalTempView("silver_events")
+print("✅ Silver global temp view created: global_temp.silver_events")
 
 # COMMAND ----------
 # MAGIC %md

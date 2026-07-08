@@ -113,9 +113,9 @@ for name, passed, failures in quality_results:
 # MAGIC %md
 # MAGIC ## Create Temp View (in-memory, no file write)
 
-# COMMAND ----------
-df.createOrReplaceTempView("bronze_events")
-print("✅ Bronze temp view created: bronze_events")
+# Create Global Temp View (shared across notebooks on same warehouse)
+df.createOrReplaceGlobalTempView("bronze_events")
+print("✅ Bronze global temp view created: global_temp.bronze_events")
 
 # COMMAND ----------
 # MAGIC %md
