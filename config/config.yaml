@@ -1,68 +1,62 @@
 # Medallion Architecture Configuration
+# Databricks Community Edition — Unity Catalog
 # Bronze → Silver → Gold layers
 
 catalog: main
-database: default
-volume: earthquake_analytics
+schema: default
 
-paths:
-  bronze: /Volumes/main/default/earthquake_analytics/bronze/events
-  silver: /Volumes/main/default/earthquake_analytics/silver/events
-  gold: /Volumes/main/default/earthquake_analytics/gold
+tables:
+  bronze: main.default.bronze_earthquake_events
+  silver: main.default.silver_earthquake_events
+  gold_daily: main.default.gold_daily_stats
+  gold_monthly: main.default.gold_monthly_stats
+  gold_regional: main.default.gold_regional_stats
+  gold_mag_dist: main.default.gold_mag_distribution
+  gold_ml_features: main.default.gold_ml_features
 
 ingestion:
-  source_url: "https://earthquake.usgs.gov/fdsnws/event/1/query"
-  params:
-    format: csv
-    minmagnitude: 2.5
-    orderby: time
-  batch_size: 20000
-  timeout_seconds: 60
+  source_url: "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=2.5&orderby=time"
+  format: csv
+  batch_id_algorithm: md5_hash
+  rate_limit_ms: 100
 
 quality:
-  checks:
-    - name: no_null_time
-      column: time
-      rule: not_null
-      severity: FAIL
-    - name: no_null_magnitude
-      column: mag
-      rule: not_null
-      severity: FAIL
-    - name: valid_latitude
-      column: latitude
-      rule: "between -90 and 90"
-      severity: WARN
-    - name: valid_longitude
-      column: longitude
-      rule: "between -180 and 180"
-      severity: WARN
-    - name: positive_depth
-      column: depth
-      rule: ">= 0"
-      severity: WARN
-    - name: valid_magnitude_range
-      column: mag
-      rule: "between 0 and 10"
-      severity: FAIL
-    - name: valid_timestamp
-      column: time
-      rule: "past_10_years"
-      severity: FAIL
-  fail_on: FAIL
-  mode: permissive  # WARN logs error, FAIL rows are dropped
+  severity_levels: [FAIL, WARN, INFO]
+  fail_rules:
+    - dq_no_null_id
+    - dq_no_null_time
+    - dq_valid_latitude
+    - dq_valid_longitude
+    - dq_valid_magnitude
+  warn_rules:
+    - dq_no_null_magnitude
+    - dq_no_null_depth
+    - dq_no_null_place
 
 silver:
-  dedup_keys: [time, latitude, longitude, mag]
-  dedup_order: time
-  date_partitions: [year, month]
-  output_format: delta
+  dedup_strategy: window_latest
+  dedup_keys: [id]
+  dedup_order: updated
+  partition_by: [event_year, event_month]
+  enrichment:
+    - region (bounding_box)
+    - mag_category (magnitude_range)
+    - depth_class (depth_range)
+    - event_year, event_month, event_quarter
 
 gold:
-  metrics:
-    - event_count
-    - avg_magnitude
-    - max_magnitude
-    - avg_depth
-    - region_count
-  output_format: delta
+  grains:
+    - daily (time-series + rolling windows)
+    - monthly (trend + MoM delta)
+    - regional (region × month)
+    - magnitude_distribution (statistical)
+    - ml_features (event-level + lagged features)
+  rolling_windows: [7d, 30d, 10_event]
+  ml_features:
+    - prev_event_mag
+    - prev_event_depth
+    - time_since_prev_event
+    - rolling_10_event_avg_mag
+    - rolling_10_event_max_mag
+    - rolling_10_event_count
+    - mag_95th_percentile_region

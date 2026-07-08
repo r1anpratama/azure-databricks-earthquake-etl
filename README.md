@@ -1,6 +1,6 @@
 # Azure Databricks ETL Pipeline — Medallion Architecture
 
-**ETL Pipeline:** USGS Earthquake CSV → Bronze (Raw) → Silver (Clean) → Gold (Analytics)
+**ETL Pipeline:** USGS Earthquake CSV → Bronze (Raw) → Silver (Clean) → Gold (Analytics + ML Features)
 
 [![CI](https://github.com/r1anpratama/azure-databricks-earthquake-etl/actions/workflows/ci.yml/badge.svg)](https://github.com/r1anpratama/azure-databricks-earthquake-etl/actions/workflows/ci.yml)
 [![Databricks](https://img.shields.io/badge/Databricks-FF3621?style=flat&logo=databricks&logoColor=white)](https://community.cloud.databricks.com)
@@ -9,175 +9,221 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat&logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **✅ Databricks Community Edition (Free) Compatible** — Runs on Serverless Starter Warehouse with UC Volumes (no DBFS, no compute clusters needed)
+> **✅ Databricks Community Edition (Free) Compatible** — Runs on Serverless SQL Warehouse with Unity Catalog managed tables. No DBFS, no compute clusters needed.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MEDALLION ARCHITECTURE                    │
-├──────────────┬─────────────────┬─────────────────┬──────────────┤
-│   EXTERNAL   │     BRONZE      │     SILVER      │     GOLD     │
-│              │   (Raw Delta)   │  (Clean Delta)  │  (Aggregated) │
-│  ┌────────┐  │  ┌───────────┐  │  ┌───────────┐  │  ┌────────┐  │
-│  │  USGS  │──┼─▶│ Events    │──┼─▶│ Events    │──┼─▶│ Daily  │  │
-│  │ API    │  │  │  (Raw)    │  │  │  (Clean)  │  │  │ Stats  │  │
-│  │ (CSV)  │  │  │           │  │  │           │  │  └────────┘  │
-│  └────────┘  │  │·InferSchema│  │  │·Validate  │  │  ┌────────┐  │
-│              │  │·Timestamp  │  │  │·Dedup     │  │  │Monthly │  │
-│              │  │·Source meta│  │  │·Partition │  │  │ Stats  │  │
-│              │  └───────────┘  │  │·Enrich    │  │  └────────┘  │
-│              │                 │  └───────────┘  │  ┌────────┐  │
-│              │                 │                 │  │Mag Dist│  │
-│              │                 │                 │  └────────┘  │
-└──────────────┴─────────────────┴─────────────────┴──────────────┘
-                                  │
-                  ┌───────────────┴───────────────┐
-                  │     QUALITY FRAMEWORK         │
-                  │  ┌──────┐  ┌────────┐  ┌────┐ │
-                  │  │Not   │  │ Range  │  │Fresh│ │
-                  │  │Null  │  │ Check  │  │ness │ │
-                  │  └──────┘  └────────┘  └────┘ │
-                  └───────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    MEDALLION ARCHITECTURE                           │
+├──────────────┬─────────────────┬─────────────────┬────────────────┤
+│   EXTERNAL   │     BRONZE      │     SILVER      │     GOLD       │
+│   SOURCE     │   (Raw Layer)   │  (Clean Layer)  │ (Analytics)    │
+├──────────────┼─────────────────┼─────────────────┼────────────────┤
+│              │                 │                 │                │
+│  USGS FDSNWS │  Schema enforce │  Deduplicate    │  Daily stats   │
+│  Earthquake  │  Quality check │  Null filter    │  Monthly stats │
+│  API (CSV)   │  Audit columns  │  Geo enrich     │  Regional risk │
+│              │  Batch ID      │  Mag classify   │  Mag distrib   │
+│              │  Delta table   │  Depth classify │  ML features   │
+│              │  UC managed    │  Temporal enrich│  Lag features  │
+│              │                 │  Partitioned    │  Rolling windows│
+│              │                 │  Delta table    │  5 Gold tables │
+└──────────────┴─────────────────┴─────────────────┴────────────────┘
+                         │                │                │
+                    spark.table    spark.table    spark.table
+                   (UC managed)   (UC managed)   (UC managed)
 ```
 
-## Pipeline Design
+---
 
-| Layer | Format | Purpose | Operations |
-|-------|--------|---------|------------|
-| **Bronze** | Delta (Raw) | Immutable raw ingestion | Schema inference, source metadata, no transform |
-| **Silver** | Delta (Partitioned) | Clean, validated events | Dedup, type casting, magnitude classification, region extraction, quality filters |
-| **Gold** | Delta (Aggregated) | Analytics-ready tables | Daily stats, monthly rollups, magnitude distribution, region-level metrics |
+## Notebooks
 
-## Key Features
+| # | Notebook | Layer | Description |
+|---|----------|-------|-------------|
+| 1 | `01_bronze_ingestion.py` | 🥉 Bronze | USGS CSV → Delta table with schema enforcement, DQ framework, batch ID |
+| 2 | `02_silver_transform.py` | 🥈 Silver | Dedup, null filter, geo/mag/depth/temporal enrichment, partitioned Delta |
+| 3 | `03_gold_analytics.py` | 🥇 Gold | 5 Gold tables: daily, monthly, regional, mag dist, ML features |
 
-### ✅ Medallion Architecture
-Industry-standard data lakehouse pattern. Bronze preserves raw data, Silver cleans, Gold serves analytics.
+### Run Order
+```
+01_bronze_ingestion → 02_silver_transform → 03_gold_analytics
+```
 
-### ✅ Delta Lake
-ACID transactions, schema enforcement, time travel, and scalable metadata handling.
+---
 
-### ✅ Data Quality Framework
-Custom `DataQuality` class runs checks at every layer:
-- **Not-null**: Detects missing critical columns
-- **Range checks**: Validates lat/lon/mag values
-- **Freshness**: Alerts on stale data (>1 year)
-- **Schema conformity**: Catches column drift
-- **Configurable severity**: FAIL vs WARN
+## Gold Layer Tables
 
-### ✅ Parameterized by Config
-All paths, thresholds, and rules live in `config/config.yaml`. No hardcoded values.
+| Table | Grain | Features |
+|-------|-------|----------|
+| `gold_daily_stats` | Daily | Rolling 7d/30d avg magnitude, event count, significant/major events |
+| `gold_monthly_stats` | Monthly | MoM delta, shallow/intermediate/deep breakdown, std magnitude |
+| `gold_regional_stats` | Region × Month | Geographic risk comparison, max/avg magnitude per region |
+| `gold_mag_distribution` | Mag Category | Statistical summary (min, max, avg, std) per magnitude class |
+| `gold_ml_features` | Event-level | Lagged magnitude/depth, time-since-prev, rolling 10-event stats, 95th percentile |
 
-### ✅ CI/CD Pipeline (GitHub Actions)
-| Job | Tools |
-|-----|-------|
-| **Lint** | Ruff, mypy, YAML validation |
-| **Test** | PySpark unit tests (pytest) |
-| **Integration** | Full Bronze→Silver→Gold simulation |
+---
 
-### ✅ Docker Support
-Reproducible environment with multi-stage Docker build.
+## Data Quality Framework
 
-### ✅ Makefile
-Common commands: `make lint`, `make test`, `make validate`, `make docker-build`.
+### Bronze Layer Checks
 
-## Repository Structure
+| Rule ID | Check | Column | Severity |
+|---------|-------|--------|----------|
+| DQ001 | no_null_id | id | FAIL |
+| DQ002 | no_null_time | time | FAIL |
+| DQ003 | valid_latitude | latitude | FAIL |
+| DQ004 | valid_longitude | longitude | FAIL |
+| DQ005 | valid_magnitude | mag | FAIL |
+| DQ006 | no_null_magnitude | mag | WARN |
+| DQ007 | no_null_depth | depth | WARN |
+| DQ008 | no_null_place | place | WARN |
+
+### Silver Layer Checks
+
+| Check | Description |
+|-------|-------------|
+| no_duplicates | No duplicate event IDs after dedup |
+| no_null_critical | No nulls in time, lat, lon, mag |
+| valid_lat | All latitudes in [-90, 90] |
+| valid_lon | All longitudes in [-180, 180] |
+| valid_mag | All magnitudes in [0, 10] |
+| valid_depth | All depths ≥ 0 |
+| region_classified | All events assigned a region |
+
+---
+
+## Enrichment Details
+
+### Geographic Region Classification
+Bounding-box classification for major tectonic zones:
+- Sunda Arc (Sumatra–Java–Bali)
+- Japan
+- California
+- Alaska
+- New Zealand
+- South America
+- Other
+
+### Magnitude Categories
+
+| Range | Category |
+|-------|----------|
+| < 3.0 | micro |
+| 3.0–3.9 | minor |
+| 4.0–4.9 | light |
+| 5.0–5.9 | moderate |
+| 6.0–6.9 | strong |
+| 7.0–7.9 | major |
+| ≥ 8.0 | great |
+
+### Depth Classification
+
+| Range (km) | Class |
+|------------|-------|
+| 0–70 | shallow |
+| 71–300 | intermediate |
+| > 300 | deep |
+
+---
+
+## ML Feature Engineering
+
+The `gold_ml_features` table provides event-level features for ML models:
+
+- **Lag features:** `prev_event_mag`, `prev_event_depth`, `time_since_prev_event`
+- **Rolling window features:** `rolling_10_event_avg_mag`, `rolling_10_event_max_mag`, `rolling_10_event_count`
+- **Statistical features:** `mag_95th_percentile_region`
+- **Temporal features:** `event_year`, `event_month`, `event_quarter`
+- **Classification features:** `mag_category`, `depth_class`, `region`
+
+---
+
+## Configuration
+
+Edit `config/config.yaml`:
+
+```yaml
+catalog: main
+schema: default
+tables:
+  bronze: main.default.bronze_earthquake_events
+  silver: main.default.silver_earthquake_events
+  gold_daily: main.default.gold_daily_stats
+  # ...
+```
+
+---
+
+## Running on Databricks Community Edition
+
+### Prerequisites
+1. Databricks Community Edition account (free)
+2. Serverless Starter Warehouse (auto-provisioned)
+3. Git repo imported as Git Folder in workspace
+
+### Steps
+1. Import repo: Workspace → Create → Git Folder → `https://github.com/r1anpratama/azure-databricks-earthquake-etl.git`
+2. Open `notebooks/01_bronze_ingestion.py`
+3. Attach compute → Serverless Starter Warehouse
+4. Run All (Ctrl+Shift+A)
+5. Repeat for `02_silver_transform.py` and `03_gold_analytics.py`
+
+### Supported Platforms
+- ✅ Databricks Community Edition (Serverless SQL Warehouse)
+- ✅ Databricks Premium/Enterprise (All-Purpose Compute or SQL Warehouse)
+- ✅ Azure Databricks
+- ✅ AWS Databricks
+
+---
+
+## Project Structure
 
 ```
 azure-databricks-earthquake-etl/
-├── .github/workflows/ci.yml    # GitHub Actions CI
-├── config/config.yaml           # Pipeline configuration
-├── src/
-│   ├── bronze.py                # Raw ingestion module
-│   ├── silver.py                # Cleaning & enrichment module
-│   ├── gold.py                  # Aggregation module
-│   ├── quality.py               # Data quality framework
-│   └── utils.py                 # Shared utilities
 ├── notebooks/
-│   ├── bronze_ingestion.py      # Databricks notebook (Bronze)
-│   ├── silver_cleaning.py       # Databricks notebook (Silver)
-│   └── gold_analytics.py        # Databricks notebook (Gold)
-├── tests/
-│   ├── test_bronze.py           # Bronze unit tests
-│   ├── test_silver.py           # Silver unit tests
-│   └── test_quality.py          # Quality framework tests
-├── Dockerfile                   # Multi-stage Docker build
-├── Makefile                     # Common commands
-├── pyproject.toml               # Python tool config (ruff, mypy, pytest)
-├── requirements.txt             # Python dependencies
-├── environment.yml              # Conda environment
-└── README.md                    # This file
+│   ├── 01_bronze_ingestion.py    # Bronze: USGS CSV → Delta (UC)
+│   ├── 02_silver_transform.py    # Silver: Dedup, enrich, partitioned Delta
+│   └── 03_gold_analytics.py      # Gold: 5 analytics tables + ML features
+├── config/
+│   └── config.yaml               # Pipeline configuration
+├── .github/
+│   └── workflows/
+│       └── ci.yml                # CI: lint, test, YAML validation
+├── pyproject.toml                # Python project config (ruff, mypy)
+├── requirements.txt              # Python dependencies
+├── Makefile                      # Common commands
+├── Dockerfile                    # Containerization
+└── README.md                     # This file
 ```
 
-## Quick Start
+---
 
-### Local Setup
-```bash
-# Clone
-git clone https://github.com/r1anpratama/azure-databricks-earthquake-etl.git
-cd azure-databricks-earthquake-etl
+## CI/CD
 
-# Option A: pip
-pip install -r requirements.txt
+GitHub Actions pipeline:
+1. **Lint** — ruff (import sorting, unused imports, style)
+2. **YAML validation** — config syntax check
+3. **Integration test** — Spark pipeline smoke test with sample data
 
-# Option B: conda
-conda env create -f environment.yml
-conda activate earthquake-etl
+---
 
-# Run tests
-make test
+## Tech Stack
 
-# Full validation
-make validate
-```
+| Component | Technology |
+|-----------|-----------|
+| Compute | Databricks Serverless SQL Warehouse |
+| Storage | Delta Lake (Unity Catalog managed tables) |
+| Processing | Apache Spark (PySpark) |
+| Source | USGS FDSNWS API (CSV) |
+| Language | Python 3.11 |
+| CI/CD | GitHub Actions |
+| Linting | ruff, mypy |
 
-### Databricks Workspace
-1. Import `notebooks/` directory via Databricks UI → Workspace → Import
-2. Attach to cluster (Runtime 10.4+ LTS, Delta enabled)
-3. Run Bronze → Silver → Gold in order
-4. Verify outputs at:
-   - `DBFS:/mnt/earthquake_analytics/bronze/events`
-   - `DBFS:/mnt/earthquake_analytics/silver/events`
-   - `DBFS:/mnt/earthquake_analytics/gold/`
+---
 
-### Docker
-```bash
-make docker-build
-make docker-test
-```
+## License
 
-## Skills Demonstrated
-
-| Skill | Evidence |
-|-------|----------|
-| **ETL Pipeline Design** | Bronze→Silver→Gold medallion architecture |
-| **Delta Lake** | ACID transactions, partitioned tables, time travel |
-| **PySpark** | DataFrame API, window functions, aggregations |
-| **Data Quality** | Rule-based framework with FAIL/WARN severity |
-| **Config Management** | YAML-driven pipeline parameters |
-| **CI/CD** | GitHub Actions — lint, test, integration |
-| **Testing** | PySpark unit tests with pytest fixtures |
-| **Containerization** | Multi-stage Docker build |
-| **DevOps** | Makefile, pyproject.toml, pre-commit |
-| **Data Warehousing** | Partition strategy, star-schema ready aggregates |
-
-## Data Sources
-
-- **USGS Earthquake Catalog**: [earthquake.usgs.gov/fdsnws/event/1/query](https://earthquake.usgs.gov/fdsnws/event/1/query)
-  - Magnitude ≥ 2.5, sorted by time
-  - Format: CSV with header
-  - Schema: 22 columns (time, lat, lon, mag, depth, place, type, status, ...)
-
-## Background
-
-Built as a portfolio project for **Data Engineer** role applications (targeting EY). Demonstrates production-grade data engineering practices on the **Microsoft Azure Databricks** platform, aligned with the medallion architecture pattern used in modern data lakehouses.
-
-## Author
-
-**Rian Pratama** — Data Engineer @ BMKG | M.Sc. candidate @ National Central University, Taiwan
-
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white)](https://linkedin.com/in/ri-anpratama)
-[![GitHub](https://img.shields.io/badge/GitHub-181717?style=flat&logo=github&logoColor=white)](https://github.com/r1anpratama)
-[![Google Scholar](https://img.shields.io/badge/Scholar-4285F4?style=flat&logo=googlescholar&logoColor=white)](https://scholar.google.com/citations?user=BYbHHKYAAAAJ)
+MIT
