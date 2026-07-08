@@ -23,8 +23,26 @@ from pyspark.sql.types import (
 SOURCE_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=2.5&orderby=time&limit=50000"
 VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
 
-# Create volume directory via SQL (UC)
-spark.sql("CREATE VOLUME IF NOT EXISTS main.default.earthquake_analytics")
+# Create volume directory via SQL (UC) - try multiple catalog options
+try:
+    spark.sql("CREATE VOLUME IF NOT EXISTS hive_metastore.default.earthquake_analytics")
+    VOLUME_PATH = "/Volumes/hive_metastore/default/earthquake_analytics"
+except:
+    try:
+        spark.sql("CREATE VOLUME IF NOT EXISTS main.default.earthquake_analytics")
+        VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
+    except:
+        # Fallback: use workspace files (always available)
+        VOLUME_PATH = "/Workspace/Pipelines/earthquake_analytics"
+        import os
+        for p in [
+            f"{VOLUME_PATH}/bronze/events",
+            f"{VOLUME_PATH}/silver/events",
+            f"{VOLUME_PATH}/gold/daily_stats",
+            f"{VOLUME_PATH}/gold/monthly_stats", 
+            f"{VOLUME_PATH}/gold/magnitude_distribution"
+        ]:
+            os.makedirs(p, exist_ok=True)
 
 # COMMAND ----------
 # MAGIC %md

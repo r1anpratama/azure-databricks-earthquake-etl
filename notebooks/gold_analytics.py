@@ -19,8 +19,17 @@ from pyspark.sql.functions import (
 )
 
 # COMMAND ----------
-# Config (Community Edition)
-VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
+# Config (Community Edition) - try UC Volume, fallback to Workspace
+try:
+    spark.sql("DESCRIBE VOLUME hive_metastore.default.earthquake_analytics")
+    VOLUME_PATH = "/Volumes/hive_metastore/default/earthquake_analytics"
+except:
+    try:
+        spark.sql("DESCRIBE VOLUME main.default.earthquake_analytics")
+        VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
+    except:
+        VOLUME_PATH = "/Workspace/Pipelines/earthquake_analytics"
+
 silver_path = f"{VOLUME_PATH}/silver/events"
 gold_path = f"{VOLUME_PATH}/gold"
 
