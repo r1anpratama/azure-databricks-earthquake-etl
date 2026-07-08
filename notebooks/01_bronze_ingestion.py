@@ -44,8 +44,8 @@ SOURCE_URL = (
     "?format=csv&minmagnitude=2.5&orderby=time"
 )
 
-# Unity Catalog target (Community Edition: `main` catalog is provisioned)
-CATALOG = "main"
+# Unity Catalog target (Community Edition: `workspace` catalog is provisioned)
+CATALOG = "workspace"
 SCHEMA = "default"
 TABLE_NAME = "bronze_earthquake_events"
 FULL_TABLE = f"{CATALOG}.{SCHEMA}.{TABLE_NAME}"

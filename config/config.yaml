@@ -2,17 +2,17 @@
 # Databricks Community Edition — Unity Catalog
 # Bronze → Silver → Gold layers
 
-catalog: main
+catalog: workspace
 schema: default
 
 tables:
-  bronze: main.default.bronze_earthquake_events
-  silver: main.default.silver_earthquake_events
-  gold_daily: main.default.gold_daily_stats
-  gold_monthly: main.default.gold_monthly_stats
-  gold_regional: main.default.gold_regional_stats
-  gold_mag_dist: main.default.gold_mag_distribution
-  gold_ml_features: main.default.gold_ml_features
+  bronze: workspace.default.bronze_earthquake_events
+  silver: workspace.default.silver_earthquake_events
+  gold_daily: workspace.default.gold_daily_stats
+  gold_monthly: workspace.default.gold_monthly_stats
+  gold_regional: workspace.default.gold_regional_stats
+  gold_mag_dist: workspace.default.gold_mag_distribution
+  gold_ml_features: workspace.default.gold_ml_features
 
 ingestion:
   source_url: "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=2.5&orderby=time"

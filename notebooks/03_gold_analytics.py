@@ -32,7 +32,7 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 # Configuration
-CATALOG = "main"
+CATALOG = "workspace"
 SCHEMA = "default"
 SILVER_TABLE = f"{CATALOG}.{SCHEMA}.silver_earthquake_events"
 GOLD_PREFIX = f"{CATALOG}.{SCHEMA}"
