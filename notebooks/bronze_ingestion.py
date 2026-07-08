@@ -20,7 +20,7 @@ from pyspark.sql.types import (
 
 # COMMAND ----------
 # Config (Community Edition — no config.yaml access)
-SOURCE_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=2.5&orderby=time&limit=50000"
+SOURCE_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&minmagnitude=2.5&orderby=time"
 VOLUME_PATH = "/Volumes/main/default/earthquake_analytics"
 
 # Create volume directory via SQL (UC) - try multiple catalog options
