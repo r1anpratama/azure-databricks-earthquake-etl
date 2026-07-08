@@ -7,6 +7,11 @@
 # MAGIC Output: Cleaned, partitioned Delta table
 
 # COMMAND ----------
+# Setup widgets (Community Edition)
+dbutils.widgets.text("bronze_path", "/tmp/earthquake_analytics/bronze/events")
+dbutils.widgets.text("silver_path", "/tmp/earthquake_analytics/silver/events")
+
+# COMMAND ----------
 from src.silver import SilverTransformer
 
 # COMMAND ----------

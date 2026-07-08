@@ -7,6 +7,11 @@
 # MAGIC Output: Delta tables for BI / ML consumption
 
 # COMMAND ----------
+# Setup widgets (Community Edition)
+dbutils.widgets.text("silver_path", "/tmp/earthquake_analytics/silver/events")
+dbutils.widgets.text("gold_path", "/tmp/earthquake_analytics/gold")
+
+# COMMAND ----------
 from src.gold import GoldAggregator
 
 # COMMAND ----------
